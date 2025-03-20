@@ -4,37 +4,38 @@ const moment = require("moment-timezone");
 const sequelize = require("../connection");
 const Form = require("../models/form"); // Import the Admin model
 
-// const sendWhatsAppMessage = async (mobile, templateName, parameters) => {
-//   try {
-//     await axios.post(
-//       "https://graph.facebook.com/v22.0/593691093825849/messages",
-//       {
-//         messaging_product: "whatsapp",
-//         to: mobile, 
-//         type: "template",
-//         template: {
-//           name: templateName, // Dynamic template selection
-//           language: { code: "en" },
-//           components: [
-//             {
-//               type: "body",
-//               parameters: parameters.map((param) => ({ type: "text", text: param })),
-//             },
-//           ],
-//         },
-//       },
-//       {
-//         headers: {
-//           Authorization: `Bearer YOUR_ACCESS_TOKEN`,
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
-//     console.log(`WhatsApp message sent to ${mobile} using template: ${templateName}`);
-//   } catch (error) {
-//     console.error("Error sending WhatsApp message:", error.response?.data || error.message);
-//   }
-// };
+const sendWhatsAppMessage = async (mobile, templateName, parameters) => {
+  try {
+    await axios.post(
+      "https://graph.facebook.com/v22.0/593691093825849/messages",
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: mobile,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: "en" },
+          components: [
+            {
+              type: "body",
+              parameters: parameters.map((param) => ({ type: "text", text: param })),
+            },
+          ],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer YOUR_ACCESS_TOKEN`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    console.log(`WhatsApp message sent to ${mobile} using template: ${templateName}`);
+  } catch (error) {
+    console.error("Error sending WhatsApp message:", error.response?.data || error.message);
+  }
+};
 
 
 const createForm = async (req, res) => {
@@ -50,12 +51,12 @@ const createForm = async (req, res) => {
     }
 
     const newForm = await Form.create({ name, mobile, remark, amount, type });
+    const transactionDate = moment().tz("Asia/Kolkata").format("DD-MM-YYYY");
 
-    // // Determine which template to send based on type
-    // const templateName = type === "IN" ? "royaltravel_trn_msg" : "transaction_out_notification";
-    // const transactionDate = moment().tz("Asia/Kolkata").format("DD-MM-YYYY");
+    // Determine template based on type
+    const templateName = type === "IN" ? "royaltravel_trn_msg" : "royal_travel_trn_msg_out";
 
-    // await sendWhatsAppMessage(mobile, templateName, [name, transactionDate, amount]);
+    await sendWhatsAppMessage(mobile, templateName, [name, transactionDate, amount]);
 
     return res.status(201).json({ message: "Form submitted successfully!", form: newForm });
   } catch (error) {
@@ -129,43 +130,153 @@ const getAllForms = async (req, res) => {
   }
 };
 
-// cron.schedule("0 0 * * *", async () => {
-//   try {
-//     const yesterdayStart = moment().tz("Asia/Kolkata").subtract(1, "day").startOf("day").toDate();
-//     const yesterdayEnd = moment().tz("Asia/Kolkata").subtract(1, "day").endOf("day").toDate();
+cron.schedule("0 0 * * *", async () => {
+  try {
+    const yesterdayStart = moment().tz("Asia/Kolkata").subtract(1, "day").startOf("day").toDate();
+    const yesterdayEnd = moment().tz("Asia/Kolkata").subtract(1, "day").endOf("day").toDate();
 
-//     const stats = await Form.findOne({
-//       attributes: [
-//         [sequelize.literal(`SUM(CASE WHEN type = 'IN' THEN amount ELSE 0 END)`), "yesterdayInAmount"],
-//         [sequelize.literal(`SUM(CASE WHEN type = 'OUT' THEN amount ELSE 0 END)`), "yesterdayOutAmount"],
-//       ],
-//       where: {
-//         createdAt: { [sequelize.Op.between]: [yesterdayStart, yesterdayEnd] },
-//       },
-//       raw: true,
-//     });
+    const stats = await Form.findOne({
+      attributes: [
+        [sequelize.literal(`SUM(CASE WHEN type = 'IN' THEN amount ELSE 0 END)`), "yesterdayInAmount"],
+        [sequelize.literal(`SUM(CASE WHEN type = 'OUT' THEN amount ELSE 0 END)`), "yesterdayOutAmount"],
+      ],
+      where: {
+        createdAt: { [sequelize.Op.between]: [yesterdayStart, yesterdayEnd] },
+      },
+      raw: true,
+    });
 
-//     const yesterdayInAmount = stats.yesterdayInAmount || 0;
-//     const yesterdayOutAmount = stats.yesterdayOutAmount || 0;
-//     const netBalance = yesterdayInAmount - yesterdayOutAmount;
+    const yesterdayInAmount = stats.yesterdayInAmount || 0;
+    const yesterdayOutAmount = stats.yesterdayOutAmount || 0;
+    const netBalance = yesterdayInAmount - yesterdayOutAmount;
 
-//     if (yesterdayInAmount > 0 || yesterdayOutAmount > 0) {
-//       const adminMobile = "ADMIN_PHONE_NUMBER"; // Replace with the admin’s phone number
-//       const transactionDate = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD-MM-YYYY");
+    if (yesterdayInAmount > 0 || yesterdayOutAmount > 0) {
+      const adminMobile = "+917229092225"; // Replace with admin phone number
+      const transactionDate = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD-MM-YYYY");
 
-//       await sendWhatsAppMessage(adminMobile, "royaltravel_trn_msg_admin", [
-//         "Admin", transactionDate, yesterdayInAmount, yesterdayOutAmount, netBalance
-//       ]);
+      await sendWhatsAppMessage(adminMobile, "royaltravel_trn_msg_admin", [
+        "Admin", transactionDate, yesterdayInAmount, yesterdayOutAmount, netBalance
+      ]);
 
-//       console.log("Daily admin WhatsApp summary sent!");
-//     }
-//   } catch (error) {
-//     console.error("Error in daily WhatsApp summary:", error);
-//   }
-// });
+      console.log("Daily admin WhatsApp summary sent!");
+    }
+  } catch (error) {
+    console.error("Error in daily WhatsApp summary:", error);
+  }
+});
 
 
 module.exports = {
   createForm,
   getAllForms,
 };
+
+
+// inward
+// {
+//   "messaging_product": "whatsapp",    
+//   "recipient_type": "individual",
+//   "to": "+917229092225",
+//   "type": "template",
+//   "template": {
+//       "name": "royaltravel_trn_msg",
+//       "language": {
+//           "code": "en"
+//       },
+//       "components": [
+//           {
+//               "type": "body",
+//               "parameters": [
+//                   {
+//                       "type": "text",
+//                       "text": "Shubham"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "18-03-2025"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "400"
+//                   }
+//               ]
+//           }
+//       ]
+//   }
+// }
+
+
+// admin
+// {
+//   "messaging_product": "whatsapp",    
+//   "recipient_type": "individual",
+//   "to": "+917229092225",
+//   "type": "template",
+//   "template": {
+//       "name": "royaltravel_trn_msg_admin ",
+//       "language": {
+//           "code": "en"
+//       },
+//       "components": [
+//           {
+//               "type": "body",
+//               "parameters": [
+//                   {
+//                       "type": "text",
+//                       "text": "Shubham"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "18-03-2025"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "400"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "200"
+//                   },
+//                                       {
+//                       "type": "text",
+//                       "text": "200"
+//                   }
+//               ]
+//           }
+//       ]
+//   }
+// }
+
+
+// outward
+// {
+//   "messaging_product": "whatsapp",    
+//   "recipient_type": "individual",
+//   "to": "+917229092225",
+//   "type": "template",
+//   "template": {
+//       "name": "royal_travel_trn_msg_out",
+//       "language": {
+//           "code": "en"
+//       },
+//       "components": [
+//           {
+//               "type": "body",
+//               "parameters": [
+//                   {
+//                       "type": "text",
+//                       "text": "Shubham"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "18-03-2025"
+//                   },
+//                   {
+//                       "type": "text",
+//                       "text": "400"
+//                   }
+//               ]
+//           }
+//       ]
+//   }
+// }
