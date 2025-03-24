@@ -1,13 +1,17 @@
+require("dotenv").config();
 const cron = require("node-cron");
 const axios = require("axios");
 const moment = require("moment-timezone");
 const sequelize = require("../connection");
 const Form = require("../models/form"); // Import the Admin model
 
+const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN; // Replace with your actual access token
+const WHATSAPP_PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
 const sendWhatsAppMessage = async (mobile, templateName, parameters) => {
   try {
     await axios.post(
-      "https://graph.facebook.com/v22.0/593691093825849/messages",
+      `https://graph.facebook.com/v22.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         recipient_type: "individual",
@@ -26,7 +30,7 @@ const sendWhatsAppMessage = async (mobile, templateName, parameters) => {
       },
       {
         headers: {
-          Authorization: `Bearer YOUR_ACCESS_TOKEN`,
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
           "Content-Type": "application/json",
         },
       }
@@ -50,13 +54,20 @@ const createForm = async (req, res) => {
       return res.status(400).json({ message: "Invalid type. Allowed values: IN, OUT." });
     }
 
-    const newForm = await Form.create({ name, mobile, remark, amount, type });
+    let whatsappSent = false;
     const transactionDate = moment().tz("Asia/Kolkata").format("DD-MM-YYYY");
 
     // Determine template based on type
     const templateName = type === "IN" ? "royaltravel_trn_msg" : "royal_travel_trn_msg_out";
 
-    await sendWhatsAppMessage(mobile, templateName, [name, transactionDate, amount]);
+    try {
+      await sendWhatsAppMessage(mobile, templateName, [name, transactionDate, amount]);
+      whatsappSent = true; // Set to true if the message is sent successfully
+    } catch (error) {
+      console.error("Error sending WhatsApp message:", error);
+    }
+
+    const newForm = await Form.create({ name, mobile, remark, amount, type, whatsappSent });
 
     return res.status(201).json({ message: "Form submitted successfully!", form: newForm });
   } catch (error) {
@@ -151,12 +162,15 @@ cron.schedule("0 0 * * *", async () => {
     const netBalance = yesterdayInAmount - yesterdayOutAmount;
 
     if (yesterdayInAmount > 0 || yesterdayOutAmount > 0) {
-      const adminMobile = "+917229092225"; // Replace with admin phone number
+      const adminMobiles = ["+917229092225", "+917017923028", "+917300500939"]; // Replace with admin phone number
       const transactionDate = moment().tz("Asia/Kolkata").subtract(1, "day").format("DD-MM-YYYY");
 
-      await sendWhatsAppMessage(adminMobile, "royaltravel_trn_msg_admin", [
-        "Admin", transactionDate, yesterdayInAmount, yesterdayOutAmount, netBalance
-      ]);
+      // Send WhatsApp message to each admin
+      for (const mobile of adminMobiles) {
+        await sendWhatsAppMessage(mobile, "royaltravel_trn_msg_admin", [
+          "Admin", transactionDate, yesterdayInAmount, yesterdayOutAmount, netBalance
+        ]);
+      }
 
       console.log("Daily admin WhatsApp summary sent!");
     }

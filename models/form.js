@@ -26,9 +26,14 @@ const Form = sequelize.define(
       allowNull: false,
     },
     type: {
-        type: DataTypes.ENUM("IN", "OUT"),
-        allowNull: false,
-      },
+      type: DataTypes.ENUM("IN", "OUT"),
+      allowNull: false,
+    },
+    whatsappSent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false, // Default to false (not sent)
+    },
   },
   {
     timestamps: true,
